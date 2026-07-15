@@ -1,0 +1,25 @@
+{
+  "name": "k6-performance-suite",
+  "version": "1.0.0",
+  "description": "Maintainable and scalable k6 performance testing suite for the Restful-Booker demo API",
+  "type": "module",
+  "scripts": {
+    "ui": "node runner/server.js",
+    "smoke": "k6 run -e TEST_TYPE=smoke tests/booking-flow.js",
+    "load": "k6 run -e TEST_TYPE=load tests/booking-flow.js",
+    "stress": "k6 run -e TEST_TYPE=stress tests/booking-flow.js",
+    "spike": "k6 run -e TEST_TYPE=spike tests/booking-flow.js",
+    "soak": "k6 run -e TEST_TYPE=soak tests/booking-flow.js",
+    "breakpoint": "k6 run -e TEST_TYPE=breakpoint tests/booking-flow.js",
+    "read": "k6 run -e TEST_TYPE=load tests/booking-read.js",
+    "health": "k6 run -e TEST_TYPE=smoke tests/health.js"
+  },
+  "keywords": [
+    "k6",
+    "performance-testing",
+    "load-testing",
+    "grafana-k6",
+    "restful-booker"
+  ],
+  "license": "MIT"
+}

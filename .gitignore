@@ -1,0 +1,21 @@
+# Generated reports
+reports/*
+!reports/.gitkeep
+
+# Local secrets / credentials
+.env
+.env.*
+!.env.example
+
+# Dependencies
+node_modules/
+
+# k6 binaries / local output
+*.log
+k6
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp

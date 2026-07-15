@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>k6 Test Runner</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --panel: #161b22;
+    --panel-2: #1c2230;
+    --border: #2a3140;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --accent: #7d5bed;
+    --accent-2: #5b8def;
+    --green: #3fb950;
+    --red: #f85149;
+    --amber: #d29922;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+  }
+  header h1 { font-size: 16px; margin: 0; font-weight: 600; letter-spacing: .3px; }
+  header .logo {
+    width: 28px; height: 28px; border-radius: 7px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 15px; color: white;
+  }
+  .status-pill {
+    margin-left: auto; font-size: 12px; font-family: var(--mono);
+    padding: 5px 12px; border-radius: 999px; border: 1px solid var(--border);
+    color: var(--muted); display: flex; align-items: center; gap: 7px;
+  }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
+  .dot.idle { background: var(--muted); }
+  .dot.running { background: var(--green); box-shadow: 0 0 0 0 rgba(63,185,80,.7); animation: pulse 1.4s infinite; }
+  .dot.done { background: var(--accent-2); }
+  .dot.error { background: var(--red); }
+  @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(63,185,80,.6)} 70%{box-shadow:0 0 0 8px rgba(63,185,80,0)} 100%{box-shadow:0 0 0 0 rgba(63,185,80,0)} }
+
+  main { flex: 1; display: flex; min-height: 0; }
+
+  aside {
+    width: 300px; flex-shrink: 0; border-right: 1px solid var(--border);
+    background: var(--panel); padding: 18px; overflow-y: auto;
+  }
+  aside h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); margin: 0 0 12px; }
+  .field { margin-bottom: 16px; }
+  .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  select, input[type=number] {
+    width: 100%; padding: 9px 10px; background: var(--panel-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px; font-size: 14px; font-family: inherit;
+  }
+  select:focus, input:focus { outline: none; border-color: var(--accent-2); }
+  .type-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .type-grid button {
+    padding: 9px 6px; border: 1px solid var(--border); background: var(--panel-2);
+    color: var(--text); border-radius: 8px; cursor: pointer; font-size: 13px; text-transform: capitalize;
+    transition: all .12s;
+  }
+  .type-grid button:hover { border-color: var(--accent-2); }
+  .type-grid button.active { background: var(--accent); border-color: var(--accent); color: white; font-weight: 600; }
+  .actions { display: flex; gap: 10px; margin-top: 4px; }
+  .btn {
+    flex: 1; padding: 11px; border: none; border-radius: 8px; cursor: pointer;
+    font-size: 14px; font-weight: 600; font-family: inherit;
+  }
+  .btn-run { background: var(--green); color: #06210c; }
+  .btn-run:disabled { background: #23482a; color: #5f7d66; cursor: not-allowed; }
+  .btn-stop { background: var(--red); color: #2a0a08; }
+  .btn-stop:disabled { background: #4a211f; color: #8a5b58; cursor: not-allowed; }
+  .hint { font-size: 11px; color: var(--muted); margin-top: 6px; line-height: 1.5; }
+
+  section.content { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .tabs { display: flex; gap: 2px; padding: 10px 16px 0; border-bottom: 1px solid var(--border); background: var(--panel); }
+  .tab {
+    padding: 9px 16px; cursor: pointer; font-size: 13px; color: var(--muted);
+    border: 1px solid transparent; border-bottom: none; border-radius: 8px 8px 0 0;
+  }
+  .tab.active { color: var(--text); background: var(--bg); border-color: var(--border); }
+  .panel { flex: 1; min-height: 0; display: none; }
+  .panel.active { display: flex; flex-direction: column; }
+
+  #log {
+    flex: 1; margin: 0; padding: 16px; overflow-y: auto; background: var(--bg);
+    font-family: var(--mono); font-size: 12.5px; line-height: 1.6; white-space: pre-wrap; word-break: break-word;
+  }
+  #log .l-cmd { color: var(--accent-2); }
+  #log .l-ok { color: var(--green); }
+  #log .l-err { color: var(--red); }
+  #log .l-runner { color: var(--amber); }
+  .log-empty { color: var(--muted); }
+
+  iframe { flex: 1; border: none; width: 100%; background: white; }
+  .dash-bar { padding: 8px 16px; background: var(--panel); border-bottom: 1px solid var(--border); font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 10px; }
+  .dash-bar a { color: var(--accent-2); text-decoration: none; }
+  .dash-bar button { padding: 4px 10px; font-size: 12px; background: var(--panel-2); color: var(--text); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; }
+
+  #reports { flex: 1; overflow-y: auto; padding: 16px; }
+  .report-row { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px; background: var(--panel); }
+  .report-row .name { font-family: var(--mono); font-size: 13px; flex: 1; word-break: break-all; }
+  .report-row .badge { font-size: 10px; text-transform: uppercase; padding: 3px 7px; border-radius: 5px; font-weight: 700; }
+  .badge.html { background: #24304a; color: var(--accent-2); }
+  .badge.xml { background: #3a2f1a; color: var(--amber); }
+  .badge.json { background: #1e3a2a; color: var(--green); }
+  .report-row .meta { font-size: 11px; color: var(--muted); }
+  .report-row a { color: var(--accent-2); text-decoration: none; font-size: 13px; }
+  .empty { color: var(--muted); text-align: center; padding: 40px; font-size: 13px; }
+  .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--red); color: white; padding: 10px 18px; border-radius: 8px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; }
+  .toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">k6</div>
+  <h1>Performance Test Runner</h1>
+  <div class="status-pill"><span class="dot idle" id="statusDot"></span><span id="statusText">idle</span></div>
+</header>
+
+<main>
+  <aside>
+    <h2>Configure run</h2>
+    <div class="field">
+      <label for="testFile">Test case</label>
+      <select id="testFile"></select>
+    </div>
+
+    <div class="field">
+      <label>Test type</label>
+      <div class="type-grid" id="typeGrid"></div>
+    </div>
+
+    <div class="field">
+      <label for="vus">VUs (optional override)</label>
+      <input type="number" id="vus" min="1" placeholder="profile default" />
+      <div class="hint">Blank = use the profile's built-in VU count.</div>
+    </div>
+
+    <div class="field">
+      <label for="environment">Environment</label>
+      <select id="environment"></select>
+    </div>
+
+    <div class="actions">
+      <button class="btn btn-run" id="runBtn">Run</button>
+      <button class="btn btn-stop" id="stopBtn" disabled>Stop</button>
+    </div>
+    <div class="hint" id="cmdPreview" style="margin-top:14px;font-family:var(--mono);"></div>
+  </aside>
+
+  <section class="content">
+    <div class="tabs">
+      <div class="tab active" data-tab="log">Live output</div>
+      <div class="tab" data-tab="dash">Dashboard</div>
+      <div class="tab" data-tab="reports">Reports</div>
+    </div>
+
+    <div class="panel active" data-panel="log">
+      <pre id="log"><span class="log-empty">No output yet. Configure a run and press Run.</span></pre>
+    </div>
+
+    <div class="panel" data-panel="dash">
+      <div class="dash-bar">
+        <span>Live k6 dashboard</span>
+        <a id="dashLink" href="#" target="_blank">open in new tab &#8599;</a>
+        <button id="reloadDash" style="margin-left:auto;">Reload</button>
+      </div>
+      <iframe id="dashFrame" src="about:blank" title="k6 dashboard"></iframe>
+    </div>
+
+    <div class="panel" data-panel="reports">
+      <div id="reports"></div>
+    </div>
+  </section>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const state = { testFile: null, testType: 'smoke', environment: 'prod', running: false, dashboardUrl: '' };
+
+const $ = (id) => document.getElementById(id);
+const logEl = $('log');
+const statusDot = $('statusDot');
+const statusText = $('statusText');
+
+function toast(msg) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+function setStatus(kind, text) {
+  statusDot.className = 'dot ' + kind;
+  statusText.textContent = text;
+}
+
+function updateCmdPreview() {
+  const vus = $('vus').value.trim();
+  let cmd = `k6 run -e TEST_TYPE=${state.testType} -e TEST_FILE=${state.testFile} -e ENVIRONMENT=${state.environment}`;
+  if (vus) cmd += ` -e VUS=${vus}`;
+  cmd += ` tests/${state.testFile}.js`;
+  $('cmdPreview').textContent = cmd;
+}
+
+async function loadConfig() {
+  const cfg = await (await fetch('/api/config')).json();
+  state.dashboardUrl = cfg.dashboardUrl;
+  $('dashLink').href = cfg.dashboardUrl;
+
+  const tf = $('testFile');
+  tf.innerHTML = cfg.tests.map((t) => `<option value="${t}">${t}</option>`).join('');
+  state.testFile = cfg.tests[0] || null;
+
+  const env = $('environment');
+  env.innerHTML = cfg.environments.map((e) => `<option value="${e}">${e}</option>`).join('');
+
+  const grid = $('typeGrid');
+  grid.innerHTML = cfg.testTypes
+    .map((t, i) => `<button data-type="${t}" class="${i === 0 ? 'active' : ''}">${t}</button>`)
+    .join('');
+  grid.querySelectorAll('button').forEach((b) => {
+    b.onclick = () => {
+      grid.querySelectorAll('button').forEach((x) => x.classList.remove('active'));
+      b.classList.add('active');
+      state.testType = b.dataset.type;
+      updateCmdPreview();
+    };
+  });
+
+  if (cfg.running) setRunning(true, cfg.current);
+  updateCmdPreview();
+}
+
+function appendLog(line) {
+  const empty = logEl.querySelector('.log-empty');
+  if (empty) empty.remove();
+  const span = document.createElement('span');
+  let cls = '';
+  if (line.startsWith('$ ')) cls = 'l-cmd';
+  else if (line.startsWith('[runner]')) cls = 'l-runner';
+  else if (/✓|status is|PASS/.test(line)) cls = 'l-ok';
+  else if (/✗|ERRO|error|level=error|FAIL/i.test(line)) cls = 'l-err';
+  span.className = cls;
+  span.textContent = line + '\n';
+  logEl.appendChild(span);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+function setRunning(running, meta) {
+  state.running = running;
+  $('runBtn').disabled = running;
+  $('stopBtn').disabled = !running;
+  if (running) {
+    setStatus('running', meta ? `running ${meta.testType} (${meta.testFile})` : 'running');
+    // Give k6 a moment to boot the dashboard, then load it in the iframe.
+    setTimeout(() => { $('dashFrame').src = state.dashboardUrl; }, 1500);
+  }
+}
+
+async function run() {
+  const vus = $('vus').value.trim();
+  logEl.innerHTML = '';
+  const body = { testFile: state.testFile, testType: state.testType, environment: state.environment, vus: vus || undefined };
+  const res = await fetch('/api/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const data = await res.json();
+  if (!data.ok) { toast(data.error || 'Failed to start'); return; }
+  setRunning(true, data.meta);
+}
+
+async function stop() {
+  await fetch('/api/stop', { method: 'POST' });
+}
+
+async function loadReports() {
+  const { reports } = await (await fetch('/api/reports')).json();
+  const el = $('reports');
+  if (!reports.length) { el.innerHTML = '<div class="empty">No reports yet. Run a test to generate one.</div>'; return; }
+  el.innerHTML = reports.map((r) => {
+    const ext = r.name.split('.').pop();
+    const kb = (r.size / 1024).toFixed(1);
+    const when = new Date(r.mtime).toLocaleString();
+    const openable = ext === 'html';
+    return `<div class="report-row">
+      <span class="badge ${ext}">${ext}</span>
+      <span class="name">${r.name}</span>
+      <span class="meta">${kb} KB &middot; ${when}</span>
+      ${openable ? `<a href="/reports/${encodeURIComponent(r.name)}" target="_blank">open &#8599;</a>` : `<a href="/reports/${encodeURIComponent(r.name)}" download>download</a>`}
+    </div>`;
+  }).join('');
+}
+
+// Server-Sent Events for live output.
+const es = new EventSource('/api/stream');
+es.addEventListener('log', (e) => appendLog(JSON.parse(e.data).line));
+es.addEventListener('start', (e) => setRunning(true, JSON.parse(e.data)));
+es.addEventListener('end', (e) => {
+  const d = JSON.parse(e.data);
+  setRunning(false);
+  setStatus(d.code === 0 ? 'done' : 'error', d.code === 0 ? 'finished' : `exited (code ${d.code})`);
+  loadReports();
+});
+
+// Tab switching.
+document.querySelectorAll('.tab').forEach((tab) => {
+  tab.onclick = () => {
+    document.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach((p) => p.classList.remove('active'));
+    tab.classList.add('active');
+    document.querySelector(`.panel[data-panel="${tab.dataset.tab}"]`).classList.add('active');
+    if (tab.dataset.tab === 'reports') loadReports();
+  };
+});
+
+$('runBtn').onclick = run;
+$('stopBtn').onclick = stop;
+$('reloadDash').onclick = () => { $('dashFrame').src = state.dashboardUrl; };
+$('testFile').onchange = (e) => { state.testFile = e.target.value; updateCmdPreview(); };
+$('environment').onchange = (e) => { state.environment = e.target.value; updateCmdPreview(); };
+$('vus').oninput = updateCmdPreview;
+
+loadConfig();
+loadReports();
+</script>
+</body>
+</html>

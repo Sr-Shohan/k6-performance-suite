@@ -1,0 +1,149 @@
+name: k6 Performance Tests
+
+on:
+  # Fast feedback on every push / PR: smoke only.
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+  # Manual runs: pick any test file + test type from the Actions UI.
+  workflow_dispatch:
+    inputs:
+      test_file:
+        description: "Test file to run (in tests/, without .js)"
+        type: choice
+        default: booking-flow
+        options:
+          - booking-flow
+          - booking-read
+          - create-booking
+          - update-booking
+          - partial-update-booking
+          - delete-booking
+          - health
+      test_type:
+        description: "Test type / load profile"
+        type: choice
+        default: load
+        options:
+          - smoke
+          - load
+          - stress
+          - spike
+          - soak
+          - breakpoint
+      environment:
+        description: "Target environment"
+        type: choice
+        default: prod
+        options:
+          - prod
+          - staging
+          - local
+      vus:
+        description: "Override peak VUs (optional, e.g. 100). Blank = profile default."
+        type: string
+        required: false
+        default: ""
+
+  # Nightly soak run against the demo API (kept short via SOAK_DURATION).
+  schedule:
+    - cron: "0 2 * * *"
+
+jobs:
+  # PR / push: quick smoke matrix so failures surface fast.
+  smoke:
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    name: Smoke (${{ matrix.test_file }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        test_file:
+          - booking-flow
+          - booking-read
+          - create-booking
+          - update-booking
+          - partial-update-booking
+          - delete-booking
+          - health
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install k6
+        uses: grafana/setup-k6-action@v1
+
+      - name: Run k6 smoke test
+        run: k6 run -e TEST_TYPE=smoke -e ENVIRONMENT=prod -e TEST_FILE=${{ matrix.test_file }} tests/${{ matrix.test_file }}.js
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: k6-report-smoke-${{ matrix.test_file }}
+          path: reports/
+          if-no-files-found: warn
+
+      - name: Publish HTML summary link
+        if: always()
+        run: |
+          echo "### k6 smoke report: ${{ matrix.test_file }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Download the HTML report from the run's Artifacts section." >> "$GITHUB_STEP_SUMMARY"
+
+  # Manual dispatch: run the exact file + type the user selected.
+  on-demand:
+    if: github.event_name == 'workflow_dispatch'
+    name: ${{ inputs.test_type }} (${{ inputs.test_file }})${{ inputs.vus && format(' @ {0} VUs', inputs.vus) || '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install k6
+        uses: grafana/setup-k6-action@v1
+
+      - name: Run k6 test
+        env:
+          # Keep long profiles bounded in CI unless overridden.
+          SOAK_DURATION: ${{ inputs.test_type == 'soak' && '10m' || '30m' }}
+          # Blank when not provided; profiles.js ignores an empty VUS.
+          VUS: ${{ inputs.vus }}
+        run: |
+          k6 run \
+            -e TEST_TYPE=${{ inputs.test_type }} \
+            -e ENVIRONMENT=${{ inputs.environment }} \
+            -e TEST_FILE=${{ inputs.test_file }} \
+            -e VUS="$VUS" \
+            tests/${{ inputs.test_file }}.js
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: k6-report-${{ inputs.test_file }}-${{ inputs.test_type }}
+          path: reports/
+          if-no-files-found: warn
+
+  # Nightly soak (short duration to stay within CI limits).
+  nightly-soak:
+    if: github.event_name == 'schedule'
+    name: Nightly soak (booking-flow)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install k6
+        uses: grafana/setup-k6-action@v1
+
+      - name: Run k6 soak test
+        env:
+          SOAK_DURATION: "15m"
+        run: k6 run -e TEST_TYPE=soak -e ENVIRONMENT=prod -e TEST_FILE=booking-flow tests/booking-flow.js
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: k6-report-nightly-soak
+          path: reports/
+          if-no-files-found: warn
